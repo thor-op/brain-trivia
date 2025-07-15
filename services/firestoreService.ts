@@ -51,6 +51,7 @@ export const submitScore = async (user: User, score: number, gameMode: GameMode,
             name: user.displayName || 'Anonymous',
             photoURL: user.photoURL || '',
             score: score,
+            category: category,
         };
         
         if (isDaily) {

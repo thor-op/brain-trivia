@@ -39,6 +39,7 @@ export interface LeaderboardEntry {
   photoURL: string;
   score: number;
   date?: string;
+  category?: Category;
 }
 
 export type PowerUpType = 'FIFTY_FIFTY' | 'SKIP' | 'EXTRA_TIME';

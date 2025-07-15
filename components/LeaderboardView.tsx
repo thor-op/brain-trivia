@@ -70,7 +70,10 @@ const LeaderboardView: React.FC<LeaderboardViewProps> = ({ onBack }) => {
                                 >
                                     <span className="font-display text-lg text-slate-400 w-8 text-center">{index + 1}</span>
                                     <img src={entry.photoURL} alt={entry.name} className="w-10 h-10 rounded-full mx-2 border-2 border-brand-yellow" />
-                                    <span className="font-bold text-slate-200 flex-grow">{entry.name}</span>
+                                    <div className="font-bold text-slate-200 flex-grow">
+                                        {entry.name}
+                                        {entry.category && <span className="block text-xs text-slate-500 font-normal">{entry.category}</span>}
+                                    </div>
                                     <span className="font-bold text-brand-yellow text-lg">{entry.score}</span>
                                 </motion.li>
                             ))}
