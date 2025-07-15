@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Never-Ending Trivia by Gemini</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              'display': ['"Bebas Neue"', 'sans-serif'],
+              'mono': ['"IBM Plex Mono"', 'monospace'],
+            },
+            colors: {
+              'brand-yellow': '#FFFF00',
+              'brand-magenta': '#FF00FF',
+              'brand-cyan': '#00FFFF',
+              'brand-black': '#121212',
+              'brand-white': '#FFFFFF',
+              'correct': '#00FFFF', 
+              'incorrect': '#FF00FF',
+            },
+            boxShadow: {
+              'hard': '4px 4px 0px #000000',
+              'hard-sm': '2px 2px 0px #000000',
+              'hard-white': '4px 4px 0px #FFFFFF',
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.5s ease-in-out',
+              'pop-in': 'popIn 0.4s cubic-bezier(0.68, -0.55, 0.27, 1.55)',
+            },
+            keyframes: {
+              fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+              popIn: { '0%': { transform: 'scale(0.8)', opacity: '0' }, '100%': { transform: 'scale(1)', opacity: '1' } },
+            }
+          }
+        }
+      }
+    </script>
+    <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://esm.sh/@google/genai@^1.9.0",
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "react": "https://esm.sh/react@^19.1.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "framer-motion": "https://esm.sh/framer-motion@^11.0.8",
+    "firebase/": "https://esm.sh/firebase@10.12.2/"
+  }
+}
+</script>
+  <link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-brand-black text-brand-white font-mono">
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

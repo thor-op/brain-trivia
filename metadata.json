@@ -1,0 +1,6 @@
+{
+  "name": "Brain Trivia",
+  "description": "An endlessly fun trivia game powered by Gemini. Answer questions, rack up points, and challenge your knowledge with a continuous stream of new challenges.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
