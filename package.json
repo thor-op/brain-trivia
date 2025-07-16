@@ -1,7 +1,7 @@
 {
   "name": "brain-trivia",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.0.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,13 +10,16 @@
   },
   "dependencies": {
     "@google/genai": "^1.9.0",
+    "firebase": "10.12.2",
+    "framer-motion": "^11.0.8",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "framer-motion": "^11.0.8",
-    "firebase": "10.12.2"
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "@types/react": "^19.1.8",
+    "@types/uuid": "^10.0.0",
     "typescript": "~5.7.2",
     "vite": "^6.2.0"
   }

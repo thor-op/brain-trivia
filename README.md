@@ -11,6 +11,14 @@ A modern, endlessly fun trivia game powered by Gemini AI and Firebase. Challenge
 - Power-ups and streak bonuses
 - Beautiful, responsive UI
 
+## Recent Updates
+
+- **2025-07-15**
+  - Users can now rate the usefulness of each answer (1-10).
+  - Questions with highly-rated answers (average ≥ 7) appear in the Useful Answers area.
+  - Answer flow improved: 5-second pause after answering to allow rating.
+  - Added a Changelog page accessible from the Home screen.
+
 ## Tech Stack
 - React + TypeScript
 - Vite
@@ -75,7 +83,7 @@ Pull requests are welcome! For major changes, please open an issue first to disc
 5. Open a pull request
 
 ## License
-[MIT](LICENSE)
+This project is licensed under the [GNU GPLv3](https://www.gnu.org/licenses/gpl-3.0.html).
 
 ---
 

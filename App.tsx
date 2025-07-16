@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameState, TriviaQuestion, Category, CATEGORIES, PlayerStats, POWER_UPS, PowerUpType, User, GameMode } from './types';
 import { generateTriviaQuestion, generateDailyQuizSet } from './services/geminiService';
-import { getDailyQuiz, submitScore } from './services/firestoreService';
+import { getDailyQuiz, submitScore, setAnswerRating, getAverageAnswerRating, getAnswerRatings, getUsefulAnswers, setQuestionInCentralCollection, getQuestionById } from './services/firestoreService';
+import { collection, getDoc, doc } from 'firebase/firestore';
+import { db } from './components/firebase';
 import Scoreboard from './components/Scoreboard';
 import QuestionCard from './components/QuestionCard';
 import LoadingSpinner from './components/LoadingSpinner';
@@ -11,6 +13,7 @@ import LeaderboardView from './components/LeaderboardView';
 import PowerUps from './components/PowerUps';
 import { useAuth } from './hooks/useAuth';
 import { AnimatePresence, motion } from 'framer-motion';
+import Changelog from './components/Changelog';
 
 const TIME_LIMIT = 15;
 const XP_PER_LEVEL_BASE = 250;
@@ -20,7 +23,7 @@ const getTodayDateString = () => new Date().toISOString().split('T')[0];
 
 const App: React.FC = () => {
   const { user, loading: authLoading, login, logout } = useAuth();
-  const [view, setView] = useState<'HOME' | 'GAME' | 'LEADERBOARD'>('HOME');
+  const [view, setView] = useState<'HOME' | 'GAME' | 'LEADERBOARD' | 'USEFUL_QUESTIONS' | 'CHANGELOG'>('HOME');
   
   // Game State
   const [gameState, setGameState] = useState<GameState>(GameState.HOME);
@@ -36,6 +39,7 @@ const App: React.FC = () => {
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [answeredQuestions, setAnsweredQuestions] = useState<string[]>([]);
+  const [ratingSubmitted, setRatingSubmitted] = useState(false);
   
   const [timeLeft, setTimeLeft] = useState(TIME_LIMIT);
   const timerRef = useRef<number | null>(null);
@@ -43,6 +47,9 @@ const App: React.FC = () => {
   const [playerStats, setPlayerStats] = useState<PlayerStats>({ level: 1, xp: 0, xpToNextLevel: XP_PER_LEVEL_BASE });
   const [powerUps, setPowerUps] = useState<Record<PowerUpType, number>>({ 'FIFTY_FIFTY': 1, 'SKIP': 1, 'EXTRA_TIME': 1 });
   const [showLevelUp, setShowLevelUp] = useState(false);
+  const [answerAverageRating, setAnswerAverageRating] = useState<number | undefined>(undefined);
+  const [userAnswerRating, setUserAnswerRating] = useState<number | undefined>(undefined);
+  const [usefulQuestions, setUsefulQuestions] = useState<TriviaQuestion[]>([]);
 
   const stopTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -69,6 +76,7 @@ const App: React.FC = () => {
     }, 1000);
   }, [handleTimeUp]);
   
+  // In fetchNewQuestion, after setting currentQuestion, store it in central collection
   const fetchNewQuestion = useCallback(async () => {
     setGameState(GameState.LOADING);
     setSelectedAnswer(null);
@@ -87,6 +95,9 @@ const App: React.FC = () => {
         }
         question = dailyQuiz[questionNumber];
       }
+      // Store question in central collection and ensure it has an id
+      const id = await setQuestionInCentralCollection(question);
+      question.id = id;
       setCurrentQuestion(question);
       setAnsweredQuestions(prev => [...prev.slice(-10), question.question]);
       setGameState(GameState.PLAYING);
@@ -103,6 +114,47 @@ const App: React.FC = () => {
     }
   },[gameState]);
 
+  // Fetch average and user rating when question changes
+  useEffect(() => {
+    const fetchRatings = async () => {
+      if (currentQuestion && currentQuestion.id && user) {
+        const avg = await getAverageAnswerRating(currentQuestion.id);
+        setAnswerAverageRating(avg);
+        const ratings = await getAnswerRatings(currentQuestion.id);
+        const userRating = ratings.find(r => r.userId === user.uid)?.rating;
+        setUserAnswerRating(userRating);
+      } else {
+        setAnswerAverageRating(undefined);
+        setUserAnswerRating(undefined);
+      }
+    };
+    fetchRatings();
+  }, [currentQuestion, user]);
+
+  // After answering, wait 5 seconds, then proceed
+  useEffect(() => {
+    if (gameState === GameState.ANSWERED) {
+      const timeout = setTimeout(() => {
+        if (isCorrect) {
+          fetchNewQuestion();
+        } else {
+          setGameState(GameState.GAME_OVER);
+        }
+      }, 5000);
+      return () => clearTimeout(timeout);
+    }
+  }, [gameState, isCorrect, fetchNewQuestion]);
+
+  // Handler for rating
+  const handleRateAnswer = async (rating: number) => {
+    if (currentQuestion && currentQuestion.id && user) {
+      await setAnswerRating(currentQuestion.id, user.uid, rating);
+      setUserAnswerRating(rating);
+      const avg = await getAverageAnswerRating(currentQuestion.id);
+      setAnswerAverageRating(avg);
+      setRatingSubmitted(true);
+    }
+  };
 
   const handleStartGame = useCallback(async (selectedMode: GameMode, selectedCategory: Category) => {
     if (selectedMode === GameMode.DAILY) {
@@ -161,7 +213,9 @@ const App: React.FC = () => {
     setSelectedAnswer(answer);
     setIsCorrect(correct);
     setGameState(GameState.ANSWERED);
-
+    setRatingSubmitted(false); // Require rating before proceeding
+    // Remove setTimeout for next question/game over
+    // Progression will be handled after rating
     if (correct) {
       const points = 10 + Math.floor(streak * 1.5) + (timeLeft * 2);
       setScore(prev => prev + points);
@@ -187,11 +241,10 @@ const App: React.FC = () => {
         const randomPowerUp = powerUpKeys[Math.floor(Math.random() * powerUpKeys.length)];
         setPowerUps(prev => ({...prev, [randomPowerUp]: prev[randomPowerUp] + 1}));
       }
-
-      setTimeout(fetchNewQuestion, 1500);
+      // Do not auto-advance
     } else {
       setStreak(0);
-      setTimeout(() => setGameState(GameState.GAME_OVER), 1500);
+      // Do not auto-advance
     }
   };
 
@@ -230,6 +283,12 @@ const App: React.FC = () => {
               timeLeft={timeLeft}
               timeLimit={TIME_LIMIT}
               displayOptions={displayOptions || currentQuestion.options}
+              userId={user?.uid}
+              answerId={currentQuestion.id}
+              averageRating={answerAverageRating}
+              userRating={userAnswerRating}
+              onRateAnswer={handleRateAnswer}
+              ratingSubmitted={ratingSubmitted}
             />
             <PowerUps powerUps={powerUps} onUse={handleUsePowerUp} disabled={selectedAnswer !== null} />
           </>
@@ -241,6 +300,20 @@ const App: React.FC = () => {
     }
   };
   
+  // Handler to show useful questions
+  const handleShowUsefulQuestions = async () => {
+    // Get answerIds with average rating >= 7
+    const answerIds = await getUsefulAnswers(7);
+    // Fetch each question by id from central 'questions' collection
+    const questions: TriviaQuestion[] = [];
+    for (const id of answerIds) {
+      const q = await getQuestionById(id);
+      if (q) questions.push(q);
+    }
+    setUsefulQuestions(questions);
+    setView('USEFUL_QUESTIONS');
+  };
+
   const renderView = () => {
     if (authLoading) return <div className="flex items-center justify-center h-screen"><LoadingSpinner /></div>
 
@@ -269,6 +342,27 @@ const App: React.FC = () => {
                     </main>
                 </div>
             );
+        case 'USEFUL_QUESTIONS':
+            return (
+              <div className="w-full max-w-2xl mx-auto p-4">
+                <h2 className="text-3xl font-display mb-4">Questions with Useful Answers</h2>
+                {usefulQuestions.length === 0 ? (
+                  <div className="text-gray-500">No highly-rated answers yet.</div>
+                ) : (
+                  <ul className="space-y-4">
+                    {usefulQuestions.map(q => (
+                      <li key={q.id} className="p-4 border-2 border-black bg-brand-white text-brand-black rounded shadow-hard">
+                        <div className="font-bold mb-2">{q.question}</div>
+                        <div className="text-sm text-gray-700">Answer: <span className="font-bold">{q.answer}</span></div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <button onClick={() => setView('HOME')} className="mt-6 w-full bg-brand-cyan text-brand-black font-display text-2xl py-3 px-6 border-4 border-black shadow-hard transition-all hover:bg-cyan-300 active:shadow-none active:translate-x-1 active:translate-y-1">Back to Home</button>
+              </div>
+            );
+        case 'CHANGELOG':
+          return <Changelog onBack={() => setView('HOME')} />;
         case 'HOME':
         default:
             return <HomeScreen 
@@ -295,7 +389,23 @@ const App: React.FC = () => {
                 </motion.div>
             )}
         </AnimatePresence>
-        
+        {/* Add button to show useful questions on home screen */}
+        {view === 'HOME' && (
+          <>
+            <button
+              onClick={handleShowUsefulQuestions}
+              className="absolute top-4 right-4 bg-brand-yellow text-brand-black font-display text-lg py-2 px-4 border-4 border-black shadow-hard transition-all hover:bg-yellow-400 active:shadow-none active:translate-x-1 active:translate-y-1 z-10"
+            >
+              Useful Answers
+            </button>
+            <button
+              onClick={() => setView('CHANGELOG')}
+              className="absolute top-4 left-4 bg-brand-magenta text-brand-black font-display text-lg py-2 px-4 border-4 border-black shadow-hard transition-all hover:bg-fuchsia-400 active:shadow-none active:translate-x-1 active:translate-y-1 z-10"
+            >
+              Changelog
+            </button>
+          </>
+        )}
         {renderView()}
 
         <footer className="absolute bottom-4 text-slate-500 text-xs">

@@ -1,6 +1,13 @@
 import type { User } from 'firebase/auth';
 
+export interface AnswerRating {
+  answerId: string; // Firestore document ID for the answer
+  userId: string;
+  rating: number; // 1-10
+}
+
 export interface TriviaQuestion {
+  id?: string; // Firestore document ID if available
   question: string;
   options: string[];
   answer: string;
