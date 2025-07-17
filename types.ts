@@ -35,6 +35,7 @@ export const CATEGORIES = [
     "Entertainment: Music",
     "Sports",
     "Technology",
+    "Real Life", // Added for practical, real-world questions
 ] as const;
 
 export type Category = typeof CATEGORIES[number];

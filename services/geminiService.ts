@@ -43,10 +43,13 @@ const dailyQuizSchema = {
 
 export async function generateTriviaQuestion(category: Category, existingQuestions: string[]): Promise<TriviaQuestion> {
   try {
-    const prompt = `Generate a new, unique trivia question about ${category}. 
+    const realLifeExtra = category === 'Real Life'
+      ? '\nFocus on practical, real-world knowledge, health, daily habits, or advice.'
+      : '';
+    const prompt = `Generate a new, unique trivia question about ${category}.
     Avoid questions from this list: [${existingQuestions.join(", ")}].
     The question should be of medium difficulty.
-    Provide 4 multiple-choice options, with one being the correct answer. The question and options must be plain text without any markdown or HTML.`;
+    Provide 4 multiple-choice options, with one being the correct answer. The question and options must be plain text without any markdown or HTML.${realLifeExtra}`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",

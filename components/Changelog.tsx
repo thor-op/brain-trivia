@@ -28,6 +28,15 @@ const changelogEntries = [
   },
 ];
 
+changelogEntries.unshift({
+  date: '2025-07-17',
+  title: 'Real Life Category',
+  details: [
+    'Added a new "Real Life" category for practical, real-world, and everyday knowledge questions.',
+    'AI prompt improved to generate more real-life and practical trivia when this category is selected.'
+  ],
+});
+
 const Changelog: React.FC<{ onBack?: () => void }> = ({ onBack }) => (
   <div className="w-full max-w-2xl mx-auto p-6 bg-brand-white text-brand-black border-4 border-black shadow-hard rounded-lg mt-8">
     <h2 className="text-4xl font-display mb-4 text-brand-magenta">Changelog</h2>
