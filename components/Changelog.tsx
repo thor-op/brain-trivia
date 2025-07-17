@@ -37,10 +37,19 @@ changelogEntries.unshift({
   ],
 });
 
+changelogEntries.unshift({
+  date: '2025-07-17',
+  title: 'Useful Answers Quiz Leaderboard & UI Improvement',
+  details: [
+    'Added a leaderboard for the Quiz Me on Useful Answers mode, showing top scores.',
+    'Moved the Quiz Me on Useful Answers button to the main button stack for better UX.'
+  ],
+});
+
 const Changelog: React.FC<{ onBack?: () => void }> = ({ onBack }) => (
   <div className="w-full max-w-2xl mx-auto p-6 bg-brand-white text-brand-black border-4 border-black shadow-hard rounded-lg mt-8">
     <h2 className="text-4xl font-display mb-4 text-brand-magenta">Changelog</h2>
-    <ul className="space-y-6">
+    <ul className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
       {changelogEntries.map((entry, idx) => (
         <li key={idx} className="border-b border-gray-300 pb-4">
           <div className="flex items-center mb-1">

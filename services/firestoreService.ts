@@ -127,6 +127,38 @@ export const getUsefulAnswers = async (threshold: number = 7): Promise<string[]>
         .map(([answerId]) => answerId);
 };
 
+// Submit score for Useful Answers Quiz mode
+export const submitUsefulQuizScore = async (user: User, score: number): Promise<void> => {
+  if (!user) return;
+  const docId = user.uid;
+  const userDocRef = doc(db, 'usefulQuizLeaderboard', docId);
+  try {
+    const docSnap = await getDoc(userDocRef);
+    if (docSnap.exists() && docSnap.data().score >= score) {
+      return;
+    }
+    await setDoc(userDocRef, {
+      userId: user.uid,
+      name: user.displayName || 'Anonymous',
+      photoURL: user.photoURL || '',
+      score,
+    });
+  } catch (error) {
+    console.error('Error submitting useful quiz score:', error);
+  }
+};
+
+// Fetch leaderboard for Useful Answers Quiz mode
+export const getUsefulQuizLeaderboard = async (): Promise<LeaderboardEntry[]> => {
+  const q = query(
+    collection(db, 'usefulQuizLeaderboard'),
+    orderBy('score', 'desc'),
+    limit(10)
+  );
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => doc.data() as LeaderboardEntry);
+};
+
 // Store a question in the central 'questions' collection
 export const setQuestionInCentralCollection = async (question: TriviaQuestion): Promise<string> => {
   let id = question.id || uuidv4();

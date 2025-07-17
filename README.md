@@ -14,9 +14,11 @@ A modern, endlessly fun trivia game powered by Gemini AI and Firebase. Challenge
 ## Recent Updates
 
 - **2025-07-17**
+  - Added a leaderboard for the Quiz Me on Useful Answers mode, showing top scores.
+  - Moved the Quiz Me on Useful Answers button to the main button stack for better UX.
   - Added a new "Real Life" category for practical, real-world, and everyday knowledge questions.
   - AI prompt improved to generate more real-life and practical trivia when this category is selected.
-  - **2025-07-15**
+- **2025-07-15** 
   - Users can now rate the usefulness of each answer (1-10).
   - Questions with highly-rated answers (average ≥ 7) appear in the Useful Answers area.
   - Answer flow improved: 5-second pause after answering to allow rating.

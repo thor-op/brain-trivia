@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameState, TriviaQuestion, Category, CATEGORIES, PlayerStats, POWER_UPS, PowerUpType, User, GameMode } from './types';
 import { generateTriviaQuestion, generateDailyQuizSet } from './services/geminiService';
-import { getDailyQuiz, submitScore, setAnswerRating, getAverageAnswerRating, getAnswerRatings, getUsefulAnswers, setQuestionInCentralCollection, getQuestionById } from './services/firestoreService';
+import { getDailyQuiz, submitScore, setAnswerRating, getAverageAnswerRating, getAnswerRatings, getUsefulAnswers, setQuestionInCentralCollection, getQuestionById, submitUsefulQuizScore, getUsefulQuizLeaderboard } from './services/firestoreService';
 import { collection, getDoc, doc } from 'firebase/firestore';
 import { db } from './components/firebase';
 import Scoreboard from './components/Scoreboard';
@@ -14,6 +14,7 @@ import PowerUps from './components/PowerUps';
 import { useAuth } from './hooks/useAuth';
 import { AnimatePresence, motion } from 'framer-motion';
 import Changelog from './components/Changelog';
+import { LeaderboardEntry } from './types';
 
 const TIME_LIMIT = 15;
 const XP_PER_LEVEL_BASE = 250;
@@ -23,7 +24,7 @@ const getTodayDateString = () => new Date().toISOString().split('T')[0];
 
 const App: React.FC = () => {
   const { user, loading: authLoading, login, logout } = useAuth();
-  const [view, setView] = useState<'HOME' | 'GAME' | 'LEADERBOARD' | 'USEFUL_QUESTIONS' | 'CHANGELOG'>('HOME');
+  const [view, setView] = useState<'HOME' | 'GAME' | 'LEADERBOARD' | 'USEFUL_QUESTIONS' | 'CHANGELOG' | 'USEFUL_QUIZ' | 'USEFUL_QUIZ_LEADERBOARD'>('HOME');
   
   // Game State
   const [gameState, setGameState] = useState<GameState>(GameState.HOME);
@@ -50,6 +51,11 @@ const App: React.FC = () => {
   const [answerAverageRating, setAnswerAverageRating] = useState<number | undefined>(undefined);
   const [userAnswerRating, setUserAnswerRating] = useState<number | undefined>(undefined);
   const [usefulQuestions, setUsefulQuestions] = useState<TriviaQuestion[]>([]);
+  const [usefulQuizQuestions, setUsefulQuizQuestions] = useState<TriviaQuestion[]>([]);
+  const [usefulQuizIndex, setUsefulQuizIndex] = useState(0);
+  const [notEnoughUseful, setNotEnoughUseful] = useState(false);
+  const [usefulQuizLeaderboard, setUsefulQuizLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [loadingUsefulQuizLeaderboard, setLoadingUsefulQuizLeaderboard] = useState(false);
 
   const stopTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -135,6 +141,14 @@ const App: React.FC = () => {
   useEffect(() => {
     if (gameState === GameState.ANSWERED) {
       const timeout = setTimeout(() => {
+        if (view === 'USEFUL_QUIZ') {
+          if (isCorrect) {
+            fetchNextUsefulQuizQuestion();
+          } else {
+            setGameState(GameState.GAME_OVER);
+          }
+          return;
+        }
         if (isCorrect) {
           fetchNewQuestion();
         } else {
@@ -143,7 +157,7 @@ const App: React.FC = () => {
       }, 5000);
       return () => clearTimeout(timeout);
     }
-  }, [gameState, isCorrect, fetchNewQuestion]);
+  }, [gameState, isCorrect, fetchNewQuestion, view]);
 
   // Handler for rating
   const handleRateAnswer = async (rating: number) => {
@@ -205,17 +219,51 @@ const App: React.FC = () => {
     setView('HOME');
   }
 
+  // In handleAnswerSelect, use the correct current question for Useful Quiz mode
   const handleAnswerSelect = (answer: string) => {
     if (gameState !== GameState.PLAYING) return;
     
     stopTimer();
-    const correct = answer === currentQuestion?.answer;
+    let questionToCheck = currentQuestion;
+    if (view === 'USEFUL_QUIZ') {
+      questionToCheck = usefulQuizQuestions[usefulQuizIndex];
+    }
+    const correct = answer === questionToCheck?.answer;
     setSelectedAnswer(answer);
     setIsCorrect(correct);
     setGameState(GameState.ANSWERED);
-    setRatingSubmitted(false); // Require rating before proceeding
+    setRatingSubmitted(false);
     // Remove setTimeout for next question/game over
     // Progression will be handled after rating
+    if (view === 'USEFUL_QUIZ') {
+      if (correct) {
+        const points = 10 + Math.floor(streak * 1.5) + (timeLeft * 2);
+        setScore(prev => prev + points);
+        const newXp = playerStats.xp + points;
+        if (newXp >= playerStats.xpToNextLevel) {
+          const newLevel = playerStats.level + 1;
+          setPlayerStats({
+            level: newLevel,
+            xp: newXp - playerStats.xpToNextLevel,
+            xpToNextLevel: Math.floor(XP_PER_LEVEL_BASE * Math.pow(1.2, newLevel - 1))
+          });
+          setShowLevelUp(true);
+          setTimeout(() => setShowLevelUp(false), 2500);
+        } else {
+          setPlayerStats(prev => ({ ...prev, xp: newXp }));
+        }
+        const newStreak = streak + 1;
+        setStreak(newStreak);
+        if (newStreak > 0 && newStreak % 5 === 0) {
+          const powerUpKeys = Object.keys(POWER_UPS) as PowerUpType[];
+          const randomPowerUp = powerUpKeys[Math.floor(Math.random() * powerUpKeys.length)];
+          setPowerUps(prev => ({...prev, [randomPowerUp]: prev[randomPowerUp] + 1}));
+        }
+      } else {
+        setStreak(0);
+      }
+      return;
+    }
     if (correct) {
       const points = 10 + Math.floor(streak * 1.5) + (timeLeft * 2);
       setScore(prev => prev + points);
@@ -314,6 +362,64 @@ const App: React.FC = () => {
     setView('USEFUL_QUESTIONS');
   };
 
+  // Handler to start Useful Answers Quiz
+  const handleStartUsefulQuiz = async () => {
+    const answerIds = await getUsefulAnswers(7);
+    const questions: TriviaQuestion[] = [];
+    for (const id of answerIds) {
+      const q = await getQuestionById(id);
+      if (q) questions.push(q);
+    }
+    if (questions.length < 5) {
+      setNotEnoughUseful(true);
+      setTimeout(() => setNotEnoughUseful(false), 3000);
+      return;
+    }
+    setUsefulQuizQuestions(questions);
+    setUsefulQuizIndex(0);
+    setView('USEFUL_QUIZ');
+    setGameState(GameState.PLAYING);
+    setScore(0);
+    setStreak(0);
+    setSelectedAnswer(null);
+    setIsCorrect(null);
+    setAnsweredQuestions([]);
+    setPlayerStats({ level: 1, xp: 0, xpToNextLevel: XP_PER_LEVEL_BASE });
+    setPowerUps({ 'FIFTY_FIFTY': 1, 'SKIP': 1, 'EXTRA_TIME': 1 });
+    setTimeLeft(TIME_LIMIT);
+    startTimer();
+  };
+
+  // Useful Quiz flow
+  const fetchNextUsefulQuizQuestion = () => {
+    if (usefulQuizIndex + 1 >= usefulQuizQuestions.length) {
+      setGameState(GameState.GAME_OVER);
+      return;
+    }
+    setUsefulQuizIndex(usefulQuizIndex + 1);
+    setSelectedAnswer(null);
+    setIsCorrect(null);
+    setGameState(GameState.PLAYING);
+    setTimeLeft(TIME_LIMIT);
+    startTimer();
+  };
+
+  // Handler to show Useful Quiz Leaderboard
+  const handleShowUsefulQuizLeaderboard = async () => {
+    setLoadingUsefulQuizLeaderboard(true);
+    const leaderboard = await getUsefulQuizLeaderboard();
+    setUsefulQuizLeaderboard(leaderboard);
+    setLoadingUsefulQuizLeaderboard(false);
+    setView('USEFUL_QUIZ_LEADERBOARD');
+  };
+
+  // On finishing Useful Quiz, submit score
+  useEffect(() => {
+    if (view === 'USEFUL_QUIZ' && gameState === GameState.GAME_OVER && user && score > 0) {
+      submitUsefulQuizScore(user, score);
+    }
+  }, [view, gameState, user, score]);
+
   const renderView = () => {
     if (authLoading) return <div className="flex items-center justify-center h-screen"><LoadingSpinner /></div>
 
@@ -349,7 +455,7 @@ const App: React.FC = () => {
                 {usefulQuestions.length === 0 ? (
                   <div className="text-gray-500">No highly-rated answers yet.</div>
                 ) : (
-                  <ul className="space-y-4">
+                  <ul className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
                     {usefulQuestions.map(q => (
                       <li key={q.id} className="p-4 border-2 border-black bg-brand-white text-brand-black rounded shadow-hard">
                         <div className="font-bold mb-2">{q.question}</div>
@@ -361,6 +467,93 @@ const App: React.FC = () => {
                 <button onClick={() => setView('HOME')} className="mt-6 w-full bg-brand-cyan text-brand-black font-display text-2xl py-3 px-6 border-4 border-black shadow-hard transition-all hover:bg-cyan-300 active:shadow-none active:translate-x-1 active:translate-y-1">Back to Home</button>
               </div>
             );
+        case 'USEFUL_QUIZ':
+          const currentUseful = usefulQuizQuestions[usefulQuizIndex];
+          return (
+            <div className="w-full max-w-2xl mx-auto space-y-4">
+              <Scoreboard score={score} playerStats={playerStats}/>
+              <main className="flex justify-center">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={gameState}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ duration: 0.3 }}
+                    className="w-full space-y-4"
+                  >
+                    {gameState === GameState.PLAYING || gameState === GameState.ANSWERED ? (
+                      <>
+                        <QuestionCard
+                          key={usefulQuizIndex}
+                          question={currentUseful}
+                          onAnswer={handleAnswerSelect}
+                          selectedAnswer={selectedAnswer}
+                          isCorrect={isCorrect}
+                          questionNumber={usefulQuizIndex + 1}
+                          timeLeft={timeLeft}
+                          timeLimit={TIME_LIMIT}
+                          displayOptions={currentUseful.options}
+                          userId={user?.uid}
+                          answerId={currentUseful.id}
+                          averageRating={answerAverageRating}
+                          userRating={userAnswerRating}
+                          onRateAnswer={handleRateAnswer}
+                          ratingSubmitted={ratingSubmitted}
+                        />
+                        <PowerUps powerUps={powerUps} onUse={handleUsePowerUp} disabled={selectedAnswer !== null} />
+                      </>
+                    ) : gameState === GameState.GAME_OVER ? (
+                      <>
+                        <GameOverScreen score={score} error={error} onPlayAgain={() => setView('HOME')} user={user} />
+                        {gameState === GameState.GAME_OVER && (
+                          <button
+                            onClick={handleShowUsefulQuizLeaderboard}
+                            className="mt-4 w-full bg-brand-cyan text-brand-black font-display text-2xl py-3 px-6 border-4 border-black shadow-hard transition-all hover:bg-cyan-300 active:shadow-none active:translate-x-1 active:translate-y-1"
+                          >
+                            View Useful Answers Quiz Leaderboard
+                          </button>
+                        )}
+                      </>
+                    ) : <LoadingSpinner />}
+                  </motion.div>
+                </AnimatePresence>
+              </main>
+            </div>
+          );
+        case 'USEFUL_QUIZ_LEADERBOARD':
+          return (
+            <div className="w-full max-w-md mx-auto p-4 md:p-6 bg-brand-black border-4 border-white shadow-hard-white text-brand-white">
+              <div className="flex items-center justify-center mb-4">
+                <span className="font-display text-4xl text-brand-cyan mr-2">🏆</span>
+                <h2 className="text-4xl font-display">Useful Answers Quiz Leaderboard</h2>
+              </div>
+              <div className="h-96 overflow-y-auto pr-2">
+                {loadingUsefulQuizLeaderboard ? <LoadingSpinner /> : (
+                  usefulQuizLeaderboard.length > 0 ?
+                    <ol className="space-y-2">
+                      {usefulQuizLeaderboard.map((entry, index) => (
+                        <li key={entry.userId} className="flex items-center p-2 bg-brand-black border-2 border-slate-600">
+                          <span className="font-display text-lg text-slate-400 w-8 text-center">{index + 1}</span>
+                          <img src={entry.photoURL} alt={entry.name} className="w-10 h-10 rounded-full mx-2 border-2 border-brand-cyan" />
+                          <div className="font-bold text-slate-200 flex-grow">
+                            {entry.name}
+                          </div>
+                          <span className="font-bold text-brand-cyan text-lg">{entry.score}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  : <p className="text-center text-slate-400 mt-10">No scores yet. Be the first!</p>
+                )}
+              </div>
+              <button
+                onClick={() => setView('HOME')}
+                className="mt-6 w-full bg-brand-cyan text-brand-black font-display text-2xl py-3 px-6 border-4 border-black shadow-hard transition-all hover:bg-cyan-300 active:shadow-none active:translate-x-1 active:translate-y-1"
+              >
+                Back to Home
+              </button>
+            </div>
+          );
         case 'CHANGELOG':
           return <Changelog onBack={() => setView('HOME')} />;
         case 'HOME':
@@ -371,7 +564,8 @@ const App: React.FC = () => {
                 onLogout={logout} 
                 onStartGame={handleStartGame}
                 onShowLeaderboard={() => setView('LEADERBOARD')}
-                />
+                onStartUsefulQuiz={handleStartUsefulQuiz}
+            />;
     }
   }
 
@@ -404,6 +598,11 @@ const App: React.FC = () => {
             >
               Changelog
             </button>
+            {notEnoughUseful && (
+              <div className="absolute top-32 right-4 bg-red-600 text-white font-bold px-4 py-2 rounded shadow-hard z-20">
+                Not enough useful questions yet! (Need at least 5)
+              </div>
+            )}
           </>
         )}
         {renderView()}
